@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const FAQ_SK = [
+type Msg = { role: "user" | "assistant"; text: string };
+
+const FAQ_CHIPS = [
   "Pre koho sú vhodné vaše produkty?",
   "Môžem kombinovať viaceré produkty?",
   "Aký je rozdiel medzi vitamínmi na vlasy vo forme gumíkov a kapsulami?",
@@ -16,72 +18,58 @@ const FAQ_SK = [
   "Kedy bude akcia?",
 ];
 
-const FAQ_CS = [
-  "Pro koho jsou vhodné vaše produkty?",
-  "Mohu kombinovat více produktů?",
-  "Jaký je rozdíl mezi vitamíny na vlasy ve formě gumídků a kapslí?",
-  "Kde najdu informace o složení a užívání?",
-  "Jaké způsoby platby nabízíte?",
-  "Kdy mám nárok na poštovné zdarma?",
-  "Jak si uplatním slevový kód?",
-  "Mohu změnit produkty v objednávce?",
-  "Kde je můj balíček?",
-  "Posíláte balíčky opakovaně?",
-  "Kdy bude akce?",
-];
-
 export default function Page() {
-  const [messages, setMessages] = useState<
-    { role: "user" | "assistant"; text: string }[]
-  >([]);
   const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
-  const [lang, setLang] = useState<"sk" | "cs">("sk");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const faqList = lang === "cs" ? FAQ_CS : FAQ_SK;
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  async function sendMessage(message: string) {
-    if (!message) return;
-    setMessages((m) => [...m, { role: "user", text: message }]);
+  async function ask(q: string) {
+    if (!q.trim() || loading) return;
+    setMessages((m) => [...m, { role: "user", text: q }]);
     setInput("");
     setLoading(true);
 
-    const res = await fetch(`/api/ask?lang=${lang}`, {
+    const res = await fetch("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ question: q }),
     });
 
-    if (!res.body) {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: "⚠️ Žiadna odpoveď zo servera." },
-      ]);
-      setLoading(false);
-      return;
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = "";
+    // stream SSE
+    const reader = res.body!.getReader();
+    const dec = new TextDecoder();
+    let assistantText = "";
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n").filter((l) => l.startsWith("data:"));
-      for (const line of lines) {
-        const json = line.replace("data: ", "");
-        try {
-          const obj = JSON.parse(json);
-          if (obj.text) {
-            fullText += obj.text;
-            setMessages((m) => [
-              ...m.filter((msg) => msg !== m[m.length - 1]),
-              { role: "assistant", text: fullText },
-            ]);
-          }
-        } catch {}
+      const chunk = dec.decode(value);
+      for (const line of chunk.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        const evt = JSON.parse(payload);
+
+        if (evt.type === "delta") {
+          assistantText += evt.text;
+          setMessages((m) => {
+            const base = m.filter((x) => x !== (m[m.length - 1] as any)?.__draft);
+            const draft: any = { role: "assistant", text: assistantText, __draft: true };
+            return [...base, draft];
+          });
+        }
+        if (evt.type === "done") {
+          setMessages((m) => {
+            const final = m[m.length - 1];
+            const fixed = { role: "assistant", text: (final as any)?.text ?? "" } as Msg;
+            return [...m.slice(0, -1), fixed];
+          });
+        }
       }
     }
 
@@ -89,91 +77,87 @@ export default function Page() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto p-6 font-sans">
-      <h1 className="text-2xl font-bold mb-4">Bloom Chatbot</h1>
+    <main
+      className="min-h-dvh mx-auto max-w-[720px] px-4 pb-24"
+      style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif" }}
+    >
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-white/85 backdrop-blur border-b border-neutral-200 py-3 mb-4">
+        <div className="flex items-center gap-3">
+          {/* Logo image – drop your transparent PNG/SVG into /public/logo.png */}
+          <img src="/logo.png" alt="Bloom Robbins" className="h-7 w-auto" />
+          <div className="text-pink-600 font-semibold">Bloom Chatbot</div>
+        </div>
+      </header>
 
-      {/* Lang toggle */}
-      <div className="mb-4">
-        <button
-          className={`px-3 py-1 rounded-l ${
-            lang === "sk" ? "bg-blue-500 text-white" : "bg-gray-200"
-          }`}
-          onClick={() => setLang("sk")}
-        >
-          Slovensky
-        </button>
-        <button
-          className={`px-3 py-1 rounded-r ${
-            lang === "cs" ? "bg-blue-500 text-white" : "bg-gray-200"
-          }`}
-          onClick={() => setLang("cs")}
-        >
-          Česky
-        </button>
-      </div>
-
-      {/* FAQ buttons */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {faqList.map((q) => (
+      {/* FAQ chips */}
+      <section className="flex flex-wrap gap-2 mb-4">
+        {FAQ_CHIPS.map((label) => (
           <button
-            key={q}
-            onClick={() => sendMessage(q)}
-            className="px-3 py-1 bg-gray-100 rounded-full hover:bg-gray-200 text-sm"
+            key={label}
+            onClick={() => ask(label)}
+            className="text-sm rounded-full border border-pink-200 px-3 py-1 hover:bg-pink-50 active:bg-pink-100"
           >
-            {q}
+            {label}
           </button>
         ))}
-      </div>
+      </section>
 
       {/* Messages */}
-      <div className="space-y-2 mb-4">
+      <section className="space-y-3">
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`p-2 rounded ${
-              m.role === "user" ? "bg-gray-200 text-right" : "bg-green-100"
-            }`}
+            className={
+              m.role === "user"
+                ? "ml-auto max-w-[85%] rounded-2xl px-3 py-2 bg-pink-600 text-white"
+                : "mr-auto max-w-[85%] rounded-2xl px-3 py-2 bg-neutral-100"
+            }
           >
             {m.text}
           </div>
         ))}
-        {loading && <div className="italic text-gray-500">...</div>}
-      </div>
+        {loading && (
+          <div className="mr-auto max-w-[85%] rounded-2xl px-3 py-2 bg-neutral-100 text-neutral-500">
+            Píšem odpoveď…
+          </div>
+        )}
+        <div ref={scrollRef} />
+      </section>
 
-      {/* Input */}
+      {/* Composer */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          sendMessage(input);
+          ask(input);
         }}
-        className="flex gap-2"
+        className="fixed inset-x-0 bottom-0 bg-white border-t border-neutral-200"
       >
-        <input
-          className="flex-1 border px-3 py-2 rounded"
-          placeholder="Napíš otázku..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <button
-          type="submit"
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          Poslať
-        </button>
+        <div className="mx-auto max-w-[720px] px-4 py-3 flex gap-2">
+          <input
+            className="flex-1 rounded-xl border border-neutral-300 px-3 py-2 outline-none focus:ring-2 ring-pink-300"
+            placeholder="Napíš otázku…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-xl bg-pink-600 text-white px-4 py-2 disabled:opacity-50"
+          >
+            Poslať
+          </button>
+        </div>
       </form>
 
-      {/* Support */}
-      <p className="text-sm text-gray-600 mt-6">
+      {/* Footer help */}
+      <div className="text-xs text-neutral-500 mt-6 mb-28">
         Ak nedostaneš odpoveď, kontaktuj podporu:{" "}
-        <a href="mailto:hello@bloomrobbins.sk" className="underline">
-          hello@bloomrobbins.sk
+        <a className="underline" href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "hello@bloomrobbins.sk"}`}>
+          {process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "hello@bloomrobbins.sk"}
         </a>{" "}
-        •{" "}
-        <a href="tel:+421908740020" className="underline">
-          +421 908 740 020
-        </a>{" "}
-        (Po–Pia 8:00–16:00)
-      </p>
+        · {process.env.NEXT_PUBLIC_SUPPORT_PHONE || "+421 908 740 020"} (Po–Pia 8:00–16:00)
+      </div>
     </main>
   );
 }
