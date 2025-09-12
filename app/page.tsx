@@ -1,7 +1,7 @@
 // app/page.tsx  (Server Component)
 import Image from "next/image";
-import ChatWidget from "../components/ChatWidget";   // ✅ relative path
-import FAQChips from "../components/FAQChips";       // ✅ new client component
+import ChatWidget from "@/components/ChatWidget";   // ✅ exact file & name
+import FAQChips from "@/components/FAQChips";      // ✅ chips are client-only
 
 const FAQ = [
   "Pre koho sú vhodné vaše produkty?",
@@ -19,24 +19,23 @@ const FAQ = [
 
 export default function Page() {
   return (
-    <main style={{ padding: "20px", fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}>
+    <main style={{ padding: "20px", fontFamily: "system-ui, Arial, sans-serif" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        {/* Ensure logo file is in /public/logo.png at the repo root */}
-        <Image src="/logo.png" alt="Bloom Robbins" width={200} height={50} priority />
-        <h1 style={{ fontSize: 22, margin: 0 }}>Bloom Chatbot</h1>
-      </div>
+      <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <Image src="/logo.png" alt="Bloom Robbins" width={180} height={42} />
+        <h1 style={{ fontSize: 20, margin: 0 }}>Bloom Chatbot</h1>
+      </header>
 
-      {/* FAQ chips (client-side, interactive) */}
+      {/* FAQ chips (client) */}
       <FAQChips items={FAQ} />
 
-      {/* Contact fallback (static) */}
-      <p style={{ fontSize: 13, color: "#555" }}>
+      {/* Support note */}
+      <p style={{ fontSize: 12, color: "#666", marginTop: 12 }}>
         Ak nedostaneš odpoveď, kontaktuj podporu:{" "}
-        <a href="mailto:hello@bloomrobbins.sk">hello@bloomrobbins.sk</a> • +421 908 740 020 (Po–Pia 8:00–16:00)
+        <a href="mailto:hello@bloomrobbins.sk">hello@bloomrobbins.sk</a> · +421 908 740 020 (Po–Pia 8:00–16:00)
       </p>
 
-      {/* Floating bubble + panel */}
+      {/* Floating chat bubble */}
       <ChatWidget />
     </main>
   );
