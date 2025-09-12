@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Msg = { role: "user" | "assistant" | "system"; text: string };
 
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
+
+  // ✅ keep role as a literal using `as const`
   const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "assistant", text: "Ahoj! Ako ti môžem pomôcť? 😊" },
+    { role: "assistant" as const, text: "Ahoj! Ako ti môžem pomôcť? 😊" },
   ]);
+
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [chatId] = useState(() => crypto.randomUUID());
@@ -30,7 +33,9 @@ export default function ChatWidget() {
 
   const ask = async (question: string) => {
     if (!question.trim()) return;
-    const next = [...msgs, { role: "user", text: question }];
+
+    // ✅ ensure the array is typed as Msg[]
+    const next: Msg[] = [...msgs, { role: "user" as const, text: question }];
     setMsgs(next);
     setInput("");
     setBusy(true);
@@ -47,30 +52,45 @@ export default function ChatWidget() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
 
-      let acc = "";
+      let buffer = "";
       let assistant = "";
 
-      // SSE lines
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        acc += decoder.decode(value, { stream: true });
 
-        for (const line of acc.split("\n")) {
+        buffer += decoder.decode(value, { stream: true });
+
+        // parse SSE lines that start with "data: "
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // keep partial line in buffer
+
+        for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const json = line.slice(6).trim();
-          if (json === "[DONE]") continue;
+          if (!json || json === "[DONE]") continue;
 
           try {
             const obj = JSON.parse(json);
+
             if (obj.delta) {
               assistant += obj.delta;
+
+              // ✅ update/append the single assistant bubble while streaming
               setMsgs((prev) => {
-                const base = prev.filter((m) => m.role !== "assistant" || m.text !== assistant);
-                return [...base, { role: "assistant", text: assistant }];
+                const copy = [...prev];
+                const last = copy[copy.length - 1];
+                if (last && last.role === "assistant") {
+                  copy[copy.length - 1] = { role: "assistant", text: assistant } as const;
+                } else {
+                  copy.push({ role: "assistant", text: assistant } as const);
+                }
+                return copy as Msg[];
               });
             }
-          } catch {}
+          } catch {
+            // ignore JSON parse errors for partial lines
+          }
         }
       }
     } catch {
@@ -102,7 +122,9 @@ export default function ChatWidget() {
           <div className="br-panel-header">
             <div className="br-dot" />
             <span>Bloom Chatbot</span>
-            <button className="br-x" onClick={() => setOpen(false)} aria-label="Close">×</button>
+            <button className="br-x" onClick={() => setOpen(false)} aria-label="Close">
+              ×
+            </button>
           </div>
 
           <div ref={viewRef} className="br-panel-view">
