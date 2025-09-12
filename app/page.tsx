@@ -1,6 +1,6 @@
 // app/page.tsx
 import Image from "next/image";
-import ChatWidget from "@/components/ChatWidget";
+// app/page.tsx import ChatWidget from "../components/ChatWidget";
 
 export default function Page() {
   return (
