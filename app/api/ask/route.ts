@@ -5,7 +5,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "hello@bloomrobbins.sk";
 const SUPPORT_PHONE = process.env.SUPPORT_PHONE || "+421 908 740 020";
 
-// ---- CORS (Shopify storefront origin)
+// CORS (Shopify origin)
 const ORIGIN = "https://bloomdevelop.myshopify.com";
 const CORS = {
   "Access-Control-Allow-Origin": ORIGIN,
@@ -18,7 +18,7 @@ export async function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS });
 }
 
-// ---- FAQ (SK)
+// FAQ
 const FAQ: { q: string; a: string; keys: string[] }[] = [
   {
     q: "Pre koho sú vhodné vaše produkty?",
@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const send = (o: any) => controller.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`));
       try {
+        // FAQ first
         const faq = findFaqAnswer(question || "");
         if (faq) {
           for (const part of faq.match(/.{1,140}/g) || []) {
@@ -115,6 +116,7 @@ export async function POST(req: NextRequest) {
           return;
         }
 
+        // AI fallback
         const sys =
           "Si zákaznícka podpora Bloom Robbins (SK/CZ). Odpovedaj stručne, priateľsky a presne. " +
           "Ak je otázka priamo pokrytá FAQ (uvedené nižšie), použi tieto informácie. " +
@@ -176,4 +178,7 @@ export async function POST(req: NextRequest) {
       ...CORS,
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
-      Conn
+      Connection: "keep-alive",
+    },
+  });
+}
